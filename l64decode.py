@@ -28,8 +28,34 @@ from pprint import pprint
 import argparse
 import os
 
-_lut3 = [ 0x14, 0x0B, 0x09, 0x02, 0x08, 0x03, 0x03, 0x03 ]
-_lut4 = [ 0x06, 0x10, 0x0C, 0x02, 0x09, 0x03, 0x04, 0x04, 0x09, 0x05, 0x04, 0x02, 0x05, 0x08, 0x09, 0x15 ]
+def DecodeFS22AndBelowFile(src, srcFile):
+    _lut3 = [ 0x14, 0x0B, 0x09, 0x02, 0x08, 0x03, 0x03, 0x03 ]
+    _lut4 = [ 0x06, 0x10, 0x0C, 0x02, 0x09, 0x03, 0x04, 0x04, 0x09, 0x05, 0x04, 0x02, 0x05, 0x08, 0x09, 0x15 ]
+
+    if srcFile[3] == 0x03:
+        srcFile[3] = 2
+        for i in range(4, len(srcFile)):
+            srcFile[i] = (srcFile[i] + (_lut3[i & 0x07] + i)) & 0xFF
+    elif srcFile[3] == 0x04:
+        srcFile[3] = 2
+        for i in range(4, len(srcFile)):
+            srcFile[i] = (srcFile[i] + (_lut4[i & 0x0F] + i)) & 0xFF
+    else:
+        print('This decoder cannot decode "{0}". The file is encoded using version {1} which is not supported.'.format(src, srcFile[3]))
+        return
+
+def DecodeFS25File(src, srcFile):
+    _lut3 = [0x14, 0x0B, 0x09, 0x02, 0x08, 0x03, 0x03, 0x03]
+    _lut4 = [0x05, 0x0f, 0x0b, 0x01, 0x08, 0x02, 0x03, 0x03, 0x08, 0x04, 0x03, 0x01, 0x04, 0x07, 0x08, 0x14]
+
+    if srcFile[0] == 0x02:
+        for i in range(2, len(srcFile)):
+            srcFile[i] = (srcFile[i] + (i - 1) + _lut3[(i - 1) & 0x07]) & 0xFF
+    elif srcFile[1] == 0x03:
+        for i in range(2, len(srcFile)):
+            srcFile[i] = (srcFile[i] + i + _lut4[(i - 0x01) & 0x07]) & 0xFF
+    else:
+        print('File "{0}" is not in a valid format!'.format(src))
 
 def DecodeFile(src, dest, overwrite):
     print('Processing {0}...'.format(src))
@@ -43,20 +69,15 @@ def DecodeFile(src, dest, overwrite):
         print('Failed to read file "{0}".'.format(src))
         return
 
-    if len(srcFile) < 4 or srcFile[0] != 0x1B or srcFile[1] != 0x4C or srcFile[2] != 0x4A:
-        print('File "{0}" contains an invalid .l64 header.'.format(src))
-        return
-
-    if srcFile[3] == 0x03:
-        srcFile[3] = 2
-        for i in range(4, len(srcFile)):
-            srcFile[i] = (srcFile[i] + (_lut3[i & 0x07] + i)) & 0xFF
-    elif srcFile[3] == 0x04:
-        srcFile[3] = 2
-        for i in range(4, len(srcFile)):
-            srcFile[i] = (srcFile[i] + (_lut4[i & 0x0F] + i)) & 0xFF
+    length = len(srcFile)
+    if length >= 4 and srcFile[0] == 0x1B and srcFile[1] == 0x4C and srcFile[2] == 0x4A:
+        DecodeFS22AndBelowFile(src, srcFile)
+    elif length >= 2 and (srcFile[0] == 0x02 or srcFile[0] == 0x03):
+        DecodeFS25File(src, srcFile)
+    elif length >= 2 and srcFile[0] == 0x01 and srcFile[1] == 0x03:
+        print('File "{0}" already unlocked!'.format(src))
     else:
-        print('This decoder cannot decode "{0}". The file is encoded using version {1} which is not supported.'.format(src, srcfile[3]))
+        print('File "{0}" contains an invalid .l64 header.'.format(src))
         return
 
     if os.path.isdir(dest):
